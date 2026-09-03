@@ -315,7 +315,118 @@ app.get('/api/ownership', auth, async (req, res, next) => { try { const rows = a
 app.get('/api/lender/summary', auth, lenderOnly, async (req, res, next) => { try { const [{ total_riders }, { pending_applications }, { approved_applications }] = await Promise.all([query("SELECT COUNT(*) total_riders FROM users WHERE role='rider'"), query("SELECT COUNT(*) pending_applications FROM financing_applications WHERE status='Pending'"), query("SELECT COUNT(*) approved_applications FROM financing_applications WHERE status='Approved'")]); const ms = await query("SELECT wm.* FROM work_metrics wm JOIN users u ON u.id=wm.user_id WHERE u.role='rider'"); const eligible = ms.filter(m => score(m).score >= 75).length; res.json({ total_riders: Number(total_riders), eligible_riders: eligible, pending_applications: Number(pending_applications), approved_applications: Number(approved_applications) }); } catch (e) { next(e) } });
 app.get('/api/lender/applications', auth, lenderOnly, async (req, res, next) => { try { const rows = await query(`SELECT a.*,u.name rider,u.mobile,wm.monthly_earnings,wm.deliveries,wm.working_days,wm.payment_reliability,wm.ev_usage_score FROM financing_applications a JOIN users u ON u.id=a.rider_id LEFT JOIN work_metrics wm ON wm.user_id=u.id ORDER BY a.created_at DESC`); res.json(rows.map(x => ({ id: Number(x.id), rider: x.rider, rider_id: Number(x.rider_id), mobile: x.mobile, workscore: x.deliveries != null ? score(x).score : 0, monthly_earnings: Number(x.monthly_earnings || 0), financing_requested: Number(x.financing_amount), status: x.status, created_at: x.created_at }))); } catch (e) { next(e) } });
 app.get('/api/lender/riders', auth, lenderOnly, async (req, res, next) => { try { const rows = await query(`SELECT u.*,k.status kyc_status,wm.deliveries,wm.monthly_earnings,wm.working_days,wm.payment_reliability,wm.ev_usage_score FROM users u LEFT JOIN kyc k ON k.user_id=u.id LEFT JOIN work_metrics wm ON wm.user_id=u.id WHERE u.role='rider'`); res.json(rows.map(x => ({ id: Number(x.id), name: x.name, mobile: x.mobile, email: x.email, kyc_status: x.kyc_status || 'pending', workscore: x.deliveries != null ? score(x).score : 0, deliveries: Number(x.deliveries || 0), monthly_earnings: Number(x.monthly_earnings || 0), working_days: Number(x.working_days || 0), payment_reliability: Number(x.payment_reliability || 0) }))); } catch (e) { next(e) } });
-app.patch('/api/lender/applications/:id', auth, lenderOnly, async (req, res, next) => { try { const { status, notes } = req.body; if (!['Approved', 'Rejected', 'Pending'].includes(status)) return res.status(400).json({ detail: 'Invalid status' }); const a = (await query('SELECT * FROM financing_applications WHERE id=?', [req.params.id]))[0]; if (!a) return res.status(404).json({ detail: 'Application not found' }); await transaction(async c => { await c.execute('UPDATE financing_applications SET status=?,notes=? WHERE id=?', [status, notes || null, a.id]); if (status === 'Approved') { const [existing] = await c.execute('SELECT id FROM repayments WHERE application_id=? LIMIT 1', [a.id]); if (!existing[0]) { const monthly = Number(a.financing_amount) / Number(a.tenure_months); for (let i = 0; i < a.tenure_months; i++) { const due = new Date(); due.setDate(due.getDate() + 30 * (i + 1)); const iso = due.toISOString().slice(0, 10); await c.execute('INSERT INTO repayments(application_id,amount,due_date) VALUES(?,?,?)', [a.id, Math.round(monthly * 100) / 100, iso]); } } } }); res.json(appOut((await query('SELECT * FROM financing_applications WHERE id=?', [a.id]))[0])); } catch (e) { next(e) } });
+app.patch('/api/lender/applications/:id', auth, lenderOnly, async (req, res, next) => {
+  try {
+    const { status, notes } = req.body;
+
+    if (!['Approved', 'Rejected', 'Pending'].includes(status)) {
+      return res.status(400).json({
+        detail: 'Invalid status',
+      });
+    }
+
+    const applications = await query(
+      'SELECT * FROM financing_applications WHERE id=?',
+      [req.params.id]
+    );
+
+    const a = applications[0];
+
+    if (!a) {
+      return res.status(404).json({
+        detail: 'Application not found',
+      });
+    }
+
+    await transaction(async (c) => {
+      // Update application status
+      await c.execute(
+        `UPDATE financing_applications
+         SET status=?, notes=?
+         WHERE id=?`,
+        [
+          status,
+          notes || null,
+          a.id,
+        ]
+      );
+
+      // Only create repayment schedule when approved
+      if (status === 'Approved') {
+        const [existing] = await c.execute(
+          `SELECT id
+           FROM repayments
+           WHERE application_id=?
+           LIMIT 1`,
+          [a.id]
+        );
+
+        // Prevent duplicate repayment schedules
+        if (!existing[0]) {
+          const monthlyPayment = Number(a.monthly_payment);
+          const tenure = Number(a.tenure_months);
+
+          if (
+            !Number.isFinite(monthlyPayment) ||
+            monthlyPayment <= 0
+          ) {
+            throw new Error(
+              'Invalid monthly payment amount'
+            );
+          }
+
+          if (
+            !Number.isInteger(tenure) ||
+            tenure <= 0
+          ) {
+            throw new Error(
+              'Invalid repayment tenure'
+            );
+          }
+
+          for (let i = 0; i < tenure; i++) {
+            const due = new Date();
+
+            due.setDate(
+              due.getDate() + 30 * (i + 1)
+            );
+
+            const iso = due
+              .toISOString()
+              .slice(0, 10);
+
+            await c.execute(
+              `INSERT INTO repayments
+               (application_id, amount, due_date)
+               VALUES (?, ?, ?)`,
+              [
+                a.id,
+                Math.round(monthlyPayment * 100) / 100,
+                iso,
+              ]
+            );
+          }
+        }
+      }
+    });
+
+    const updated = (
+      await query(
+        'SELECT * FROM financing_applications WHERE id=?',
+        [a.id]
+      )
+    )[0];
+
+    res.json(appOut(updated));
+  } catch (e) {
+    console.error(
+      'PATCH /api/lender/applications/:id error:',
+      e
+    );
+
+    next(e);
+  }
+});
 app.get('/api/lender/applications/:id', auth, lenderOnly, async (req, res, next) => { try { const a = (await query('SELECT * FROM financing_applications WHERE id=?', [req.params.id]))[0]; if (!a) return res.status(404).json({ detail: 'Application not found' }); const u = (await query('SELECT id,name,mobile,email FROM users WHERE id=?', [a.rider_id]))[0]; const k = (await query('SELECT * FROM kyc WHERE user_id=?', [a.rider_id]))[0] || null; const m = (await query('SELECT * FROM work_metrics WHERE user_id=?', [a.rider_id]))[0] || null; const reps = await query('SELECT * FROM repayments WHERE application_id=? ORDER BY due_date', [a.id]); res.json({ application: appOut(a), rider: u, kyc: k, workscore: m ? score(m) : null, repayments: reps.map(repaymentOut) }); } catch (e) { next(e) } });
 
 app.post('/api/dev/seed', async (req, res, next) => { try { if ((await query('SELECT COUNT(*) count FROM users'))[0].count > 0) return res.json({ message: 'Database already seeded' }); const riderHash = await hashPassword('sahana123'), lenderHash = await hashPassword('admin123'); const r = await query('INSERT INTO users(name,mobile,email,password_hash,role) VALUES(?,?,?,?,?)', ['Sahana', '+919876543210', 'sahana@email.com', riderHash, 'rider']); await query('INSERT INTO users(name,mobile,email,password_hash,role) VALUES(?,?,?,?,?)', ['Lender Admin', '+919000000000', 'lender@batterycredit.local', lenderHash, 'lender']); await query('INSERT INTO kyc(user_id,full_name,government_id,consent_given,status) VALUES(?,?,?,?,?)', [r.insertId, 'Sahana', 'DEMO-ID-001', true, 'verified']); await query('INSERT INTO work_metrics(user_id,deliveries,monthly_earnings,working_days,payment_reliability,ev_usage_score) VALUES(?,?,?,?,?,?)', [r.insertId, 245, 28500, 24, 95, 80]); await query('INSERT INTO financing_applications(rider_id,ev_price,down_payment,financing_amount,tenure_months,monthly_payment,status) VALUES(?,?,?,?,?,?,?)', [r.insertId, 85000, 15000, 70000, 12, 6200, 'Pending']); res.json({ message: 'Seed complete', rider_login: { mobile: '+919876543210', password: 'sahana123' }, lender_login: { mobile: '+919000000000', password: 'admin123' } }); } catch (e) { next(e) } });
