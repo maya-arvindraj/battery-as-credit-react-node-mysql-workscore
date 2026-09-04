@@ -21,6 +21,74 @@ export default function WorkScorePage({navigate}:{navigate:NavigateFn}) {
     <div className="bg-white border rounded-2xl p-6"><h2 className="font-display font-700 text-lg mb-4">Score breakdown</h2><div className="space-y-5">{cards.map(([label,value,max])=><div key={label}><div className="flex justify-between text-sm mb-2"><span className="text-slate-600">{label}</span><b>{value.toFixed(2)} / 100 · Weight {max}%</b></div><div className="h-3 bg-slate-100 rounded-full"><div className="h-3 bg-green-500 rounded-full" style={{width:`${Math.min(100,value)}%`}}/></div><div className="text-xs text-slate-400 mt-1">Contribution: {(value*max/100).toFixed(2)} points</div></div>)}</div></div>
     <div className="bg-white border rounded-2xl p-6 text-sm text-slate-600"><b>Formula:</b> Earnings × 0.30 + Delivery × 0.20 + Work days × 0.25 + Repayment history × 0.15 + EV usage/tenure × 0.10</div>
     <div className="bg-white border rounded-2xl p-6 text-sm text-slate-600">Deliveries: <b>{w.deliveries}</b> · Monthly earnings: <b>₹{w.monthly_earnings.toLocaleString('en-IN')}</b> · Working days: <b>{w.working_days}</b> · Payment reliability: <b>{w.payment_reliability}%</b> · EV usage score: <b>{w.ev_usage_score}/100</b></div>
+    {/* AI / ML REPAYMENT PREDICTION */}
+<div className="bg-white border rounded-2xl p-6">
+  <h2 className="font-display font-700 text-lg mb-4">
+    AI Repayment Assessment
+  </h2>
+
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+    <div className="bg-slate-50 rounded-xl p-4">
+      <div className="text-sm text-slate-500">
+        Repayment probability
+      </div>
+
+      <div className="text-3xl font-display font-800 text-slate-900">
+        {w.repayment_percentage != null
+          ? `${w.repayment_percentage.toFixed(1)}%`
+          : 'Unavailable'}
+      </div>
+    </div>
+
+    <div className="bg-slate-50 rounded-xl p-4">
+      <div className="text-sm text-slate-500">
+        Risk level
+      </div>
+
+      <div className="text-2xl font-display font-800 text-slate-900">
+        {w.risk_level || 'Unavailable'}
+      </div>
+    </div>
+
+    <div className="bg-slate-50 rounded-xl p-4">
+      <div className="text-sm text-slate-500">
+        Prediction
+      </div>
+
+      <div className="text-lg font-display font-700 text-slate-900">
+        {/*w.ml_prediction_label || 'Unavailable'*/}
+
+        {/*w.ml_prediction_label ||
+  (w.ml_prediction === 1
+    ? 'Likely to repay'
+    : w.ml_prediction === 0
+      ? 'Higher repayment risk'
+      : 'Unavailable')*/}
+
+
+      {/*JSON.stringify({
+        prediction: w.ml_prediction,
+        label: w.ml_prediction_label
+      })*/}
+      {w.ml_prediction_label || 'Unavailable'}
+      </div>
+    </div>
+
+  </div>
+
+  {w.recommendation && (
+    <div className="mt-4 bg-slate-50 rounded-xl p-4">
+      <div className="text-sm text-slate-500 mb-1">
+        Recommendation
+      </div>
+
+      <div className="font-600 text-slate-800">
+        {w.recommendation}
+      </div>
+    </div>
+  )}
+</div>
     <PrimaryButton className="w-full flex justify-center" onClick={()=>navigate('ev-financing')}>Explore EV Financing →</PrimaryButton>
   </div></main></div>
 }

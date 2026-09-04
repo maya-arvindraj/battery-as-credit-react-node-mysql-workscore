@@ -1,0 +1,17 @@
+column,meaning,role
+rider_id,Synthetic rider identifier,ID
+months_on_zypp,Months active on the platform,Input
+days_worked_per_month,Number of active work days in a typical month,Input
+deliveries_per_month,Completed deliveries in a typical month,Input
+monthly_earnings_inr,Estimated monthly rider earnings,Input
+earnings_volatility,Relative variability of earnings; lower is more stable,Input
+work_consistency,Fraction of recent weeks showing consistent activity,Input
+ev_usage_hours_per_month,Estimated EV usage hours per month,Input
+missed_payments,Number of previous missed rental/payment installments,Input
+on_time_payment_rate,Fraction of previous payments made on time,Input
+rental_months_completed,Months of prior rental/payment participation,Input
+loan_amount_inr,Requested EV financing amount,Input
+loan_term_months,Requested financing term,Input
+monthly_emi_inr,Synthetic monthly installment,Input
+work_score_rule_based,Transparent 0–100 baseline score,Baseline
+loan_repaid,"Whether the synthetic rider successfully repaid the loan: 1=yes, 0=no",ML target
