@@ -10,7 +10,12 @@ export type Page =
   | 'ownership'
   | 'lender-login'
   | 'lender-dashboard'
-  | 'rider-profile'
+  | 'applications'
   | 'application-details'
+  | 'riders'
+  | 'approved'
+  | 'lender-repayments'
+  | 'reports'
+  | 'settings'
 
 export type NavigateFn = (page: Page) => void

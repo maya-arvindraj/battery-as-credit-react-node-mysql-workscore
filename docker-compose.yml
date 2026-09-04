@@ -1,0 +1,55 @@
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: battery-credit-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: battery_credit
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+
+  ml:
+    build:
+      context: ./ml_service
+    container_name: battery-credit-ml
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: battery-credit-backend
+    restart: unless-stopped
+    depends_on:
+      - mysql
+      - ml
+    environment:
+      PORT: 8000
+      DATABASE_URL: mysql://root@mysql:3306/battery_credit
+      JWT_SECRET: 84591bea9686bf3bc20a4d763bafc285c377dc18b4279230b8e55237f8dedb2a
+      JWT_EXPIRE: 1d
+      ML_SERVICE_URL: http://ml:5001
+      CORS_ORIGINS: http://localhost:8443
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+    container_name: battery-credit-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "8443:8443"
+
+volumes:
+  mysql_data:
